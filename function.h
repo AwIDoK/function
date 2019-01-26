@@ -17,11 +17,12 @@ namespace my {
         typedef std::array<std::byte, 16> smallT;
         typedef std::unique_ptr<base_holder> bigT;
     public:
-        function() noexcept : invoker(nullptr), small(false) {}
-        function(std::nullptr_t) noexcept : invoker(nullptr), small(false) {}
-        function(function const& other) : small(other.small) {
-            if (small) {
-                invoker = std::get<smallT>(other.invoker);
+        function() noexcept : invoker(nullptr) {}
+        function(std::nullptr_t) noexcept : invoker(nullptr) {}
+        function(function const& other) : invoker(nullptr) {
+            if (std::holds_alternative<smallT>(other.invoker)) {
+                invoker = std::array<std::byte, 16>();
+                reinterpret_cast<base_holder *>(std::get<smallT>(other.invoker).data())->in_place_copy(std::get<smallT>(invoker).data());
             } else {
                 invoker = std::get<bigT>(other.invoker)->copy();
             }
@@ -32,26 +33,22 @@ namespace my {
         }
 
         template <typename Function>
-        function(Function func) {
+        function(Function func) : invoker(nullptr) {
             if (sizeof(holder<Function>) <= sizeof(smallT)) {
-                small = true;
+                invoker = std::array<std::byte, 16>();
                 new(std::get<smallT>(invoker).data()) holder<Function> (std::move(func));
             } else {
-                small = false;
                 invoker = std::make_unique<holder<Function>>(std::move(func));
             }
         }
 
         ~function() {
-            if (small) {
+            if (std::holds_alternative<smallT>(invoker)) {
                 reinterpret_cast<base_holder *>(std::get<smallT>(invoker).data())->~base_holder();
             }
         }
 
         function& operator=(function const& other) {
-            if (!small) {
-                std::get<bigT>(invoker).release();
-            }
             function(other).swap(*this);
             return *this;
         }
@@ -62,16 +59,15 @@ namespace my {
         }
 
         void swap(function & other) {
-            std::swap(small, other.small);
-            invoker.swap(other.invoker);
+            std::swap(invoker, other.invoker);
         }
 
         explicit operator bool() const noexcept {
-            return small || std::get<bigT>(invoker);
+            return std::holds_alternative<smallT>(invoker) || std::get<bigT>(invoker);
         }
 
         Result operator()(Args&&... args) {
-            if (small) {
+            if (std::holds_alternative<smallT>(invoker)) {
                 return reinterpret_cast<base_holder *>(std::get<smallT>(invoker).data())->run(std::forward<Args>(args)...);
             } else {
                 return std::get<bigT>(invoker)->run(std::forward<Args>(args)...);
@@ -85,6 +81,7 @@ namespace my {
             virtual ~base_holder() = default;
             virtual Result run(Args&&... args) = 0;
             virtual std::unique_ptr<base_holder> copy() = 0;
+            virtual void in_place_copy(std::byte* place) const = 0;
             void operator=(base_holder const &) = delete;
             base_holder(base_holder const &) = delete;
         };
@@ -94,6 +91,9 @@ namespace my {
             holder(Function func) : base_holder(), _function(func) {}
             std::unique_ptr<base_holder> copy() override {
                 return std::make_unique<holder<Function>>(_function);
+            }
+            void in_place_copy(std::byte * const place) const override {
+                new(place) holder<Function>(_function);
             }
 
             Result run(Args&&... args) override {
@@ -105,8 +105,7 @@ namespace my {
         private:
             Function _function;
         };
-        mutable std::variant<smallT, bigT> invoker;
-        bool small;
+        mutable std::variant<bigT, smallT> invoker;
     };
 }
 
