@@ -34,14 +34,11 @@ namespace my {
             }
         }
 
-        function(function && other) noexcept {
+        function(function && other) noexcept : invoker(nullptr) {
             if (std::holds_alternative<bigT>(other.invoker)) {
                 invoker.swap(other.invoker);
             } else {
-                empty_small();
-                if (std::holds_alternative<bigT>(invoker)) {
-                    invoker = std::array<std::byte, SMALL_SIZE>();
-                }
+                invoker = std::array<std::byte, SMALL_SIZE>();
                 reinterpret_cast<base_holder *>(std::get<smallT>(other.invoker).data())->in_place_copy(std::get<smallT>(invoker).data());
             }
         }
@@ -75,13 +72,19 @@ namespace my {
                 return *this;
             }
             if (std::holds_alternative<bigT>(other.invoker)) {
-                invoker.swap(other.invoker);
+                bigT tmp(std::move(std::get<bigT>(other.invoker)));
+                if (std::holds_alternative<smallT>(invoker)) {
+                    other.invoker = std::array<std::byte, SMALL_SIZE>();
+                    reinterpret_cast<base_holder *>(std::get<smallT>(invoker).data())->in_place_move(std::get<smallT>(other.invoker).data());
+                } else {
+                    other.invoker = std::move(std::get<bigT>(invoker));
+                }
+                invoker = std::move(tmp);
             } else {
                 empty_small();
                 if (std::holds_alternative<bigT>(invoker)) {
                     invoker = std::array<std::byte, SMALL_SIZE>();
                 }
-                ;
                 reinterpret_cast<base_holder *>(std::get<smallT>(other.invoker).data())->in_place_move(std::get<smallT>(invoker).data());
             }
             return *this;
