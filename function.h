@@ -5,7 +5,6 @@
 #include <cstddef>
 #include <variant>
 #include <array>
-#include <cstring>
 
 namespace my {
     template<typename>
