@@ -40,10 +40,13 @@ namespace my {
                 small = false;
                 invoker = std::make_unique<holder<Function>>(std::move(func));
             }
-
         }
 
-        ~function() = default;
+        ~function() {
+            if (small) {
+                reinterpret_cast<base_holder *>(std::get<smallT>(invoker).data())->~base_holder();
+            }
+        }
 
         function& operator=(function const& other) {
             if (!small) {
